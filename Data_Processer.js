@@ -1076,17 +1076,10 @@ Returns 2 if the flags are not formatted correctly.
 */
 function read_flags(reply) {
   const module_flags = ['--modules=all', '--modules=1', '--modules=2', '--modules=3', '--modules=4']
-  const rbdms_flags = ['--rbdms=true', '--rbdms=false']
-  if (reply.length > 3) {
+  if (reply.length > 2) {
     return 1
-  } else if (reply.length == 3) {
-    if ((module_flags.includes(reply[1]) && rbdms_flags.includes(reply[2])) || (module_flags.includes(reply[2] && rbdms_flags.includes(reply[1])))) {
-      return 0
-    } else {
-      return 2
-    }
   } else if (reply.length == 2) {
-    if (module_flags.includes(reply[1]) || rbdms_flags.includes(reply[1])) {
+    if (module_flags.includes(reply[1])) {
       return 0
     } else {
       return 2
@@ -1142,7 +1135,7 @@ function select_loop_read_fol(listener, folder_name, attempts, callback) {
   if (attempts > 4) {
     callback(null, null)
   } else {
-    let valid = is_alphanum(folder_name)
+    let valid = is_path(folder_name)
     let dne = false
     let usable = false
     if (valid) {
@@ -1200,6 +1193,23 @@ function select_loop_label(listener, path, attempts, callback) {
       })
     }
   }
+}
+
+/*
+Returns true if STRING is alphanumeric or contains a backslash.
+*/
+function is_path(str) {
+  let curr_char
+  for (let i = 0; i < str.length; i ++) {
+    curr_char = str.charCodeAt(i)
+    if (!(curr_char == 95) &&
+        !(curr_char > 45 && curr_char < 58) &&
+        !(curr_char > 64 && curr_char < 91) &&
+        !(curr_char > 96 && curr_char < 123)) {
+      return false
+    }
+  }
+  return true
 }
 
 /*
@@ -1293,43 +1303,28 @@ function select_loop(listener, reply, attempts) {
     if (invalid) {
       if (invalid == 1) {
         console.log()
-        console.log('Input had too many arguments. Read only accepts the --modules and --rdbms flags.')
+        console.log('Input had too many arguments. Read only accepts the --modules flag.')
         select(listener)
       } else {
         console.log()
-        console.log('dp: Invalid flag. Read only accepts the --modules and --rbdms flags.')
+        console.log('dp: Invalid flag. Read only accepts the --modules flag.')
         select(listener)
       }
     } else {
       let module_flag = 1
-      let rbdms_flag = false
-      if (reply.length == 3) {
-        let first_flag = reply[1]
-        let second_flag = reply[2]
-        if (first_flag.slice(2,3) == 'm') {
-          module_flag = parseInt(first_flag.slice(10))
-          rbdms_flag = (second_flag.slice(8) === 'true')
-        } else {
-          module_flag = parseInt(second_flag.slice(10))
-          rbdms_flag = (first_flag.slice(8) === 'true')
-        }
-      } else if (reply.length == 2) {
-        let flag = reply[1]
-        if (flag.slice(2,3) == 'm') {
-          module_flag = parseInt(flag.slice(10))
-        } else {
-          rbdms_flag = (flag.slice(8) === 'true')
-        }
+      if (reply.length == 2) {
+        module_flag = parseInt(second_flag.slice(10))
       }
       if (module_flag >= 2) {
         console.log()
         console.log('dp: BEGINNING READ')
-        read(null, null, module_flag, rbdms_flag, (err) => {
+        read(null, null, module_flag, (err) => {
           if (err) {
             console.error(err)
           } else {
             console.log()
             console.log('dp: FINISHED READING IN ERRORS.')
+            process.exit()
           }
         })
       } else {
@@ -1338,7 +1333,7 @@ function select_loop(listener, reply, attempts) {
             if (folderpath) {
               console.log()
               console.log('dp: BEGINNING READ')
-              read(folderpath, io_fname, module_flag, rbdms_flag,(err) => {
+              read(folderpath, io_fname, module_flag, (err) => {
                 if (err) {
                   console.error(err)
                 } else {
@@ -1385,6 +1380,7 @@ function select_loop(listener, reply, attempts) {
               } else {
                 console.log()
                 console.log('dp: FINISHED UPDATING LABELS.')
+                process.exit()
               }
             })
           } else {
@@ -1435,6 +1431,7 @@ function select_loop(listener, reply, attempts) {
                 console.error(err)
               } else {
                 console.log('dp: FINISHED GETTING TABLE.')
+                process.exit()
               }
             })
             console.log('GET TABLE')
@@ -1470,6 +1467,7 @@ function select_loop(listener, reply, attempts) {
             } else {
               console.log()
               console.log('dp: FINISHED SQL DUMP.')
+              process.exit()
             }
           })
           console.log('DUMP')
@@ -2154,7 +2152,7 @@ Reads in the json error files inside FOLDERPATH and adds the relevant applicatio
 Starts with START_MODULE. If RBDMS = true, uses the rbdms file to add in relevant RBDMS information to application.
 Accepts a callback to pass on errors, otherwise returns nothing.
 */
-function read(folderpath, io_name, start_module=1, rbdms=false, callback) {
+function read(folderpath, io_name, start_module=1, callback) {
   async.waterfall([
     // Connect to database
     function connect(cb) {
