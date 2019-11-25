@@ -357,10 +357,11 @@ function insert_errorfiles(filepaths, table, connection, callback) {
 }
 
 /*
-Takes in a code STR and replaces the colons with underscores
+Takes in a code STR and replaces the colons with underscores, removes quotation marks
 */
 function clean_code(str) {
   let ret = JSON.stringify(str).replace(/:/gi, '_')
+  ret = JSON.stringify(ret).replace(/"/gi, '')
   if (ret.slice(0, 1) === ' ') {
     ret = ret.slice(1)
   }
@@ -1403,12 +1404,13 @@ function select_loop(listener, reply, attempts) {
       listener.question('dp: This file will be written into CABINET/DataPipeline. Enter the file name you would like to write to (do not include the .csv):\n\n', (fname_1) => {
         select_loop_get_tr(listener, fname_1, 0, (fname) => {
           if (fname) {
-            get_training(fname, (err) => {
+            get_training(fname + '.csv', (err) => {
               if (err) {
                 console.error(err)
               } else {
                 console.log()
                 console.log('dp: FINISHED GETTING TRAINING DATA.')
+                process.exit()
               }
             })
           } else {
@@ -2695,7 +2697,7 @@ function get_training(filename, callback) {
             if (err) {
               wcb(err)
             } else {
-              wcb(output)
+              wcb(null, output)
             }
           })
         },
@@ -2712,29 +2714,32 @@ function get_training(filename, callback) {
             })
     
           csvWriter.writeRecords(output)
-          .then(() => {
-            console.log('Finished writing csv file ' + id)
-            wcb(null)
-          })
           .catch((err) => {
             wcb(err)
           })
+          .then(() => {
+            console.log('Finished writing csv file: ' + filename)
+            wcb(null)
+          })
+          
         }
       ], 
       function (err) {
         if (err) {
           cb (err)
         } else {
-          cb(null, folder, connection)
+          cb(null, folderpath, connection)
         }
       })
     },
     // Delete folder
-    function rmdir(folder, connection, cb) {
-      fs.rmdir(folder, { recursive: true }, (err) => {
+    function rmdir(folderpath, connection, cb) {
+      fs.rmdir(folderpath, { recursive: true }, (err) => {
         if (err) {
+          console.log('Error at rmdir.')
           cb(err)
         } else {
+          console.log('Finished removing: ' + folderpath)
           cb(null, connection)
         }
       })
