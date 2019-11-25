@@ -2370,10 +2370,17 @@ function label(classified_filepath, get=true, callback) {
           label_index += 1
         }
       }
-      const messages = []
+      const not_none = []
       for (row of data.slice(1)) {
+        if (row[label_index] !== 'none') {
+          not_none.push(row)
+        }
+      }
+
+      const messages = []
+      for (row of not_none) {
         let temp = {}
-        temp['message'] = datum[message_index]
+        temp['message'] = row[message_index]
         messages.push(temp)
       }
 
@@ -2397,7 +2404,7 @@ function label(classified_filepath, get=true, callback) {
         }
       })
     },
-    // Update master table with labels using async.parallel
+    // Update master table with labels using async.map
     function update_labels(to_update, connection, cb) {
       const update_query1 = 'UPDATE ' + master_table + ' SET classification = "'
       const update_query2 = '" WHERE essence = "'
