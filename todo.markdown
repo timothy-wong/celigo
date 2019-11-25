@@ -18,6 +18,7 @@
     - [ ] async.map query master_precluster for every new error to find if exists
 - [ ] get_training() should ignore null and 'none' valued errors in master
     - [ ] combine null + 'none' valued errors in master by not updating none values in label()
+- [ ] write helptext lmao
 
 
 ### REALLY BIG FIXES
