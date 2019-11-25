@@ -378,7 +378,6 @@ function clean(str) {
 /*
 Takes in an unformatted message and return a well formed error message
 */
-
 function get_list_of_strings(jsonFile) {
   var retList = ''
 
@@ -2606,10 +2605,10 @@ function get_training(filename, callback) {
     function connect(cb) {
       connect_db((err, connection) => {
         if (err) {
-          console.log('BATCH ' + id + ': Error connection to MySQL database.')
+          console.log('Error connection to MySQL database.')
           cb(err)
         } else {
-          console.log('BATCH ' + id + ': Connected to MySQL database with ID: ' + connection.threadId)
+          console.log('Connected to MySQL database with ID: ' + connection.threadId)
           cb(null, connection)
         }
       })
