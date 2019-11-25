@@ -325,6 +325,7 @@ function insert_errorfiles(filepaths, table, connection, callback) {
             error['message'] = get_list_of_strings(error['message'])
             well_formed.push(error)
           }
+          error['code'] = clean_code(error['code'])
         }
         const keys = Object.keys(well_formed[0])
         for (e of well_formed) {
@@ -353,6 +354,21 @@ function insert_errorfiles(filepaths, table, connection, callback) {
   } else {
     callback(null, 0)
   }
+}
+
+/*
+Takes in a code STR and replaces the colons with underscores
+*/
+function clean_code(str) {
+  let ret = JSON.stringify(str).replace(/:/gi, '_')
+  if (ret.slice(0, 1) === ' ') {
+    ret = ret.slice(1)
+  }
+  if (ret.slice(-1) === ' ') {
+    ret = ret.slice(0, -1)
+  }
+
+  return ret
 }
 
 /*
