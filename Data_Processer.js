@@ -828,7 +828,7 @@ Accepts a CALLBACK to pass on errors, otherwise returns nothing.
 */
 function select_and_write_training(table, id, folderpath, connection, callback) {
   const to_write = folderpath + '/training_data_' + id.toString() + '.csv'
-  const select_training1 = 'WITH temp AS (SELECT * FROM ' + table + ' LIMIT ' + join_size + ' OFFSET ' + (id * join_size) + ') '
+  const select_training1 = 'WITH temp AS (SELECT * FROM ' + table + ' WHERE ' + table + '.classification IS NOT NULL LIMIT ' + join_size + ' OFFSET ' + (id * join_size) + ') '
   const select_training2 = 'SELECT temp.application as application, temp.code as code, temp.essence as essence, temp.classification as classification, ' + master_precluster_table + '.message as message FROM temp LEFT JOIN ' + cluster_map + ' ON temp.essence = ' + cluster_map + '.essence LEFT JOIN ' + master_precluster_table + ' ON ' + cluster_map + '.hash = ' + master_precluster_table + '.hash'  
   const select_query = select_training1 + select_training2
 
@@ -2529,30 +2529,32 @@ function label(classified_filepath, get=true, callback) {
                   if (err) {
                     w1cb(err)
                   } else {
-                    w1cb(output)
+                    if (output && output.length > 1) {
+                      w1cb(null, output.slice(1))
+                    } else {
+                      w1cb(null, null)
+                    }
                   }
                 })
               },
               function write_file(output, w1cb) {
-                const csvWriter = csv_writer({
-                  path: '/var/lib/docker/volumes/CABINET/_data/DataPipeline/' + filename,
-                  header: [
-                    {id: 'application', title: 'APPLICATION'},
-                    {id: 'code', title: 'CODE'},
-                    {id: 'essence', title: 'ESSENCE'},
-                    {id: 'message', title: 'MESSAGE'},
-                    {id: 'classification', title: 'CLASSIFICATION'}
-                  ]
+                if (output && output.length) {
+                  const csvWriter = csv_writer_arr({
+                    path: '/var/lib/docker/volumes/CABINET/_data/DataPipeline/' + filename,
+                    header: ['APPLICATION', 'CODE', 'ESSENCE', 'MESSAGE', 'CLASSIFICATION']
+                    })
+            
+                  csvWriter.writeRecords(output)
+                  .then(() => {
+                    console.log('Finished writing csv file ' + filename)
+                    w1cb(null)
                   })
-          
-                csvWriter.writeRecords(output)
-                .then(() => {
-                  console.log('Finished writing csv file ' + id)
+                  .catch((err) => {
+                    w1cb(err)
+                  })
+                } else {
                   w1cb(null)
-                })
-                .catch((err) => {
-                  w1cb(err)
-                })
+                }
               }
             ], 
             function (err) {
@@ -2697,23 +2699,27 @@ function get_training(filename, callback) {
             if (err) {
               wcb(err)
             } else {
-              wcb(null, output)
+              if (output && output.length > 1) {
+                wcb(null, output.slice(1))
+              } else {
+                wcb(null, null)
+              }
             }
           })
         },
         function write_file(output, wcb) {
+          const to_write = []
+          for (row of output) {
+            if (!(row.length == 1 && row[0] === '')) {
+              to_write.push(row)
+            }
+          }
           const csvWriter = csv_writer({
             path: '/var/lib/docker/volumes/CABINET/_data/DataPipeline/' + filename,
-            header: [
-              {id: 'application', title: 'APPLICATION'},
-              {id: 'code', title: 'CODE'},
-              {id: 'essence', title: 'ESSENCE'},
-              {id: 'message', title: 'MESSAGE'},
-              {id: 'classification', title: 'CLASSIFICATION'}
-            ]
+            header: ['APPLICATION', 'CODE', 'ESSENCE', 'MESSAGE', 'CLASSIFICATION']
             })
     
-          csvWriter.writeRecords(output)
+          csvWriter.writeRecords(to_write)
           .catch((err) => {
             wcb(err)
           })
