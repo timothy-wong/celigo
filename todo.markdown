@@ -1,9 +1,9 @@
-# SMALL FIXES
+### SMALL FIXES
 - [ ] get_table() exit process after finishing
 - [ ] read() should accept the backslash character
 
 
-# BIG FIXES
+### BIG FIXES
 - [ ] T2 Clustering
     - [ ] Test clustering methods
         - [ ] Spacy clustering post training
@@ -19,7 +19,8 @@
 - [ ] get_training() should ignore null and 'none' valued errors in master
     - [ ] combine null + 'none' valued errors in master by not updating none values in label()
 
-# REALLY BIG FIXES
+
+### REALLY BIG FIXES
 - [ ] Make modules 2 and 3 atomic
     - [ ] Copy all existing tables
     - [ ] Run existing module
@@ -30,3 +31,22 @@
     - [ ] get_training() accepts a --batch flag to output specific batches
     - [ ] read() logs errors, files, per batch
     - [ ] new log() function that will print batch information
+- [ ] A,,,node container,,,,perhaps,,,,
+
+---------------------------------------------------------------------------------------------
+
+
+### TESTS
+- [ ] read()
+    - [ ] module 1
+        - [ ] check uuid_join values
+    - [ ] module 2
+    - [ ] module 3
+    - [ ] module 4
+    - [ ] atomicity
+- [ ] label()
+- [ ] get_training()
+- [ ] get_table()
+- [ ] dump()
+- [ ] log()
+- [ ] help()
