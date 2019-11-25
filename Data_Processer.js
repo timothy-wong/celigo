@@ -809,8 +809,8 @@ Select training data batch from TABLE using CONNECTION with ID giving offset (id
 Write the data into FOLDER.
 Accepts a CALLBACK to pass on errors, otherwise returns nothing.
 */
-function select_and_write_training(table, id, folder, connection, callback) {
-  const to_write = '/var/lib/docker/volumes/CABINET/_data/DataPipeline/' + folder + '/training_data_' + id.toString() + '.csv'
+function select_and_write_training(table, id, folderpath, connection, callback) {
+  const to_write = folderpath + '/training_data_' + id.toString() + '.csv'
   const select_training1 = 'WITH temp AS (SELECT * FROM ' + table + ' LIMIT ' + join_size + ' OFFSET ' + (id * join_size) + ') '
   const select_training2 = 'SELECT temp.application as application, temp.code as code, temp.essence as essence, temp.classification as classification, ' + master_precluster_table + '.message as message FROM temp LEFT JOIN ' + cluster_map + ' ON temp.essence = ' + cluster_map + '.essence LEFT JOIN ' + master_precluster_table + ' ON ' + cluster_map + '.hash = ' + master_precluster_table + '.hash'  
   const select_query = select_training1 + select_training2
@@ -842,12 +842,12 @@ function select_and_write_training(table, id, folder, connection, callback) {
         })
 
       csvWriter.writeRecords(result)
+      .catch((err) => {
+        cb(err)
+      })
       .then(() => {
         console.log('CHUNK ' + id + ': Finished writing csv file ' + id)
-        callback(null)
-      })
-      .catch((err) => {
-        callback(err)
+        cb(null)
       })
     }
   ], 
@@ -2626,12 +2626,12 @@ function get_training(filename, callback) {
           cb(err)
         } else {
           console.log('Finished mkdir.')
-          cb(null, folder, connection)
+          cb(null, folderpath, connection)
         }
       })
     },
     // Select and write training
-    function select_and_write(folder, connection, cb) {
+    function select_and_write(folderpath, connection, cb) {
       const select_query = 'SELECT COUNT(*) as count FROM ' + master_table
       connection.query(select_query, (err, result) => {
         if (err) {
@@ -2646,7 +2646,7 @@ function get_training(filename, callback) {
           console.log('Separated training into: ' + chunk_list.length + ' chunks.')
           async.map(chunk_list, 
           (i, map_callback) => {
-            select_and_write_training(master_table, i, folder, connection, (err) => {
+            select_and_write_training(master_table, i, folderpath, connection, (err) => {
               if (err) {
                 map_callback(err)
               } else {
@@ -2656,19 +2656,25 @@ function get_training(filename, callback) {
           },
           (err, res) => {
             if (err) {
+              console.log('Error at select and write.')
               cb(err)
             } else {
-              cb(null)
+              console.log('Finished select and write')
+              cb(null, folderpath, connection)
             }
           })
         }
       })
     },
     // Aggregate files
-    function aggregate(folder, connection, cb) {
+    function aggregate(folderpath, connection, cb) {
       async.waterfall([
         function read_files(wcb) {
-          const filepaths = fs.readdirSync(folder)
+          const files = fs.readdirSync(folderpath)
+          const filepaths = []
+          for (f of files) {
+            filepaths.push(folderpath + '/' + f)
+          }
           read_csvfiles(filepaths, (err, output) => {
             if (err) {
               wcb(err)
