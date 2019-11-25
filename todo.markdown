@@ -53,7 +53,7 @@
     - [ ] atomicity
 - [ ] label()
 - [x] get_training()
-- [ ] get_table()
+- [x] get_table()
 - [ ] dump()
 - [ ] log()
 - [ ] help()
