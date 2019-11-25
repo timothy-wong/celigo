@@ -2618,11 +2618,14 @@ function get_training(filename, callback) {
     },
     // Make folder
     function mkdir(connection, cb) {
-      const folder = '/var/lib/docker/volumes/CABINET/_data/DataPipeline/td_temp'
-      fs.mkdir(folder, (err) => {
+      const folder = 'td_temp'
+      const folderpath = '/var/lib/docker/volumes/CABINET/_data/DataPipeline/' + folder
+      fs.mkdir(folderpath, (err) => {
         if (err) {
+          console.log('Error at mkdir.')
           cb(err)
         } else {
+          console.log('Finished mkdir.')
           cb(null, folder, connection)
         }
       })
@@ -2640,6 +2643,7 @@ function get_training(filename, callback) {
           for (let i = 0; i < num_chunks; i ++) {
             chunk_list.push(i)
           }
+          console.log('Separated training into: ' + chunk_list.length + ' chunks.')
           async.map(chunk_list, 
           (i, map_callback) => {
             select_and_write_training(master_table, i, folder, connection, (err) => {
