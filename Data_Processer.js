@@ -885,6 +885,9 @@ function create_table_statement(table_name, results, field_names) {
   for (let i = 0; i < results.length; i++) {
     field_names[table_name].push(results[i].Field)
     statement += '   ' + results[i].Field + ' ' + results[i].Type.toUpperCase()
+    if (results[i].Key === 'PRI') {
+      statement += ' PRIMARY KEY'
+    }
     if (i < results.length - 1) {
       statement += ',\n'
     }
