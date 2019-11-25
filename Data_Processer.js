@@ -357,10 +357,11 @@ function insert_errorfiles(filepaths, table, connection, callback) {
 }
 
 /*
-Takes in a code STR and replaces the colons with underscores
+Takes in a code STR and replaces the colons with underscores, removes quotation marks
 */
 function clean_code(str) {
   let ret = JSON.stringify(str).replace(/:/gi, '_')
+  ret = JSON.stringify(ret).replace(/"/gi, '')
   if (ret.slice(0, 1) === ' ') {
     ret = ret.slice(1)
   }
@@ -827,7 +828,7 @@ Accepts a CALLBACK to pass on errors, otherwise returns nothing.
 */
 function select_and_write_training(table, id, folderpath, connection, callback) {
   const to_write = folderpath + '/training_data_' + id.toString() + '.csv'
-  const select_training1 = 'WITH temp AS (SELECT * FROM ' + table + ' LIMIT ' + join_size + ' OFFSET ' + (id * join_size) + ') '
+  const select_training1 = 'WITH temp AS (SELECT * FROM ' + table + ' WHERE ' + table + '.classification IS NOT NULL LIMIT ' + join_size + ' OFFSET ' + (id * join_size) + ') '
   const select_training2 = 'SELECT temp.application as application, temp.code as code, temp.essence as essence, temp.classification as classification, ' + master_precluster_table + '.message as message FROM temp LEFT JOIN ' + cluster_map + ' ON temp.essence = ' + cluster_map + '.essence LEFT JOIN ' + master_precluster_table + ' ON ' + cluster_map + '.hash = ' + master_precluster_table + '.hash'  
   const select_query = select_training1 + select_training2
 
@@ -1403,12 +1404,13 @@ function select_loop(listener, reply, attempts) {
       listener.question('dp: This file will be written into CABINET/DataPipeline. Enter the file name you would like to write to (do not include the .csv):\n\n', (fname_1) => {
         select_loop_get_tr(listener, fname_1, 0, (fname) => {
           if (fname) {
-            get_training(fname, (err) => {
+            get_training(fname + '.csv', (err) => {
               if (err) {
                 console.error(err)
               } else {
                 console.log()
                 console.log('dp: FINISHED GETTING TRAINING DATA.')
+                process.exit()
               }
             })
           } else {
@@ -2368,10 +2370,17 @@ function label(classified_filepath, get=true, callback) {
           label_index += 1
         }
       }
-      const messages = []
+      const not_none = []
       for (row of data.slice(1)) {
+        if (row[label_index] !== 'none') {
+          not_none.push(row)
+        }
+      }
+
+      const messages = []
+      for (row of not_none) {
         let temp = {}
-        temp['message'] = datum[message_index]
+        temp['message'] = row[message_index]
         messages.push(temp)
       }
 
@@ -2395,7 +2404,7 @@ function label(classified_filepath, get=true, callback) {
         }
       })
     },
-    // Update master table with labels using async.parallel
+    // Update master table with labels using async.map
     function update_labels(to_update, connection, cb) {
       const update_query1 = 'UPDATE ' + master_table + ' SET classification = "'
       const update_query2 = '" WHERE essence = "'
@@ -2527,30 +2536,32 @@ function label(classified_filepath, get=true, callback) {
                   if (err) {
                     w1cb(err)
                   } else {
-                    w1cb(output)
+                    if (output && output.length > 1) {
+                      w1cb(null, output.slice(1))
+                    } else {
+                      w1cb(null, null)
+                    }
                   }
                 })
               },
               function write_file(output, w1cb) {
-                const csvWriter = csv_writer({
-                  path: '/var/lib/docker/volumes/CABINET/_data/DataPipeline/' + filename,
-                  header: [
-                    {id: 'application', title: 'APPLICATION'},
-                    {id: 'code', title: 'CODE'},
-                    {id: 'essence', title: 'ESSENCE'},
-                    {id: 'message', title: 'MESSAGE'},
-                    {id: 'classification', title: 'CLASSIFICATION'}
-                  ]
+                if (output && output.length) {
+                  const csvWriter = csv_writer_arr({
+                    path: '/var/lib/docker/volumes/CABINET/_data/DataPipeline/' + filename,
+                    header: ['APPLICATION', 'CODE', 'ESSENCE', 'MESSAGE', 'CLASSIFICATION']
+                    })
+            
+                  csvWriter.writeRecords(output)
+                  .then(() => {
+                    console.log('Finished writing csv file ' + filename)
+                    w1cb(null)
                   })
-          
-                csvWriter.writeRecords(output)
-                .then(() => {
-                  console.log('Finished writing csv file ' + id)
+                  .catch((err) => {
+                    w1cb(err)
+                  })
+                } else {
                   w1cb(null)
-                })
-                .catch((err) => {
-                  w1cb(err)
-                })
+                }
               }
             ], 
             function (err) {
@@ -2695,46 +2706,53 @@ function get_training(filename, callback) {
             if (err) {
               wcb(err)
             } else {
-              wcb(output)
+              if (output && output.length > 1) {
+                wcb(null, output.slice(1))
+              } else {
+                wcb(null, null)
+              }
             }
           })
         },
         function write_file(output, wcb) {
+          const to_write = []
+          for (row of output) {
+            if (!(row.length == 1 && row[0] === '')) {
+              to_write.push(row)
+            }
+          }
           const csvWriter = csv_writer({
             path: '/var/lib/docker/volumes/CABINET/_data/DataPipeline/' + filename,
-            header: [
-              {id: 'application', title: 'APPLICATION'},
-              {id: 'code', title: 'CODE'},
-              {id: 'essence', title: 'ESSENCE'},
-              {id: 'message', title: 'MESSAGE'},
-              {id: 'classification', title: 'CLASSIFICATION'}
-            ]
+            header: ['APPLICATION', 'CODE', 'ESSENCE', 'MESSAGE', 'CLASSIFICATION']
             })
     
-          csvWriter.writeRecords(output)
-          .then(() => {
-            console.log('Finished writing csv file ' + id)
-            wcb(null)
-          })
+          csvWriter.writeRecords(to_write)
           .catch((err) => {
             wcb(err)
           })
+          .then(() => {
+            console.log('Finished writing csv file: ' + filename)
+            wcb(null)
+          })
+          
         }
       ], 
       function (err) {
         if (err) {
           cb (err)
         } else {
-          cb(null, folder, connection)
+          cb(null, folderpath, connection)
         }
       })
     },
     // Delete folder
-    function rmdir(folder, connection, cb) {
-      fs.rmdir(folder, { recursive: true }, (err) => {
+    function rmdir(folderpath, connection, cb) {
+      fs.rmdir(folderpath, { recursive: true }, (err) => {
         if (err) {
+          console.log('Error at rmdir.')
           cb(err)
         } else {
+          console.log('Finished removing: ' + folderpath)
           cb(null, connection)
         }
       })
