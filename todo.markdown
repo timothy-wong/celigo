@@ -1,6 +1,6 @@
 ### SMALL FIXES
-- [ ] get_table() exit process after finishing
-- [ ] read() should accept the backslash character
+- [x] get_table() exit process after finishing
+- [x] read() should accept the backslash character
 - [ ] add console.log messages (to everything really)
 
 ### MEDIUM FIXES
