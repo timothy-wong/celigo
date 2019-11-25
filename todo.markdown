@@ -1,7 +1,12 @@
 ### SMALL FIXES
 - [ ] get_table() exit process after finishing
 - [ ] read() should accept the backslash character
+- [ ] add console.log messages (to everything really)
 
+### MEDIUM FIXES
+- [ ] add clean up to get_training() if errors out
+    - [ ] remove td_temp in /var/lib/docker/volumes/CABINET/_data/DataPipeline
+- [ ] add clean up to, everything else?
 
 ### BIG FIXES
 - [ ] T2 Clustering
