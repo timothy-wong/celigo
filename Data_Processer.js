@@ -1750,7 +1750,7 @@ function module2(userid_data, connection, callback) {
                   let length = body.length
                   console.log('Received ' + body.length + ' essences.')
                   for (let i = 0; i < length; i ++) {
-                    if (body[i]['essence'] !== 'TRUNCATED') {
+                    if (body[i]['essence'] !== 'TRUNCATED' && body[i]['essence'] !== '') {
                       _new[i]['essence'] = body[i]['essence']
                       flasked.push(_new[i])
                     }
