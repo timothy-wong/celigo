@@ -43,7 +43,7 @@
 ---------------------------------------------------------------------------------------------
 
 
-### TESTS
+### TEST
 - [ ] read()
     - [ ] module 1
         - [ ] check uuid_join values
@@ -52,7 +52,7 @@
     - [ ] module 4
     - [ ] atomicity
 - [ ] label()
-- [ ] get_training()
+- [x] get_training()
 - [ ] get_table()
 - [ ] dump()
 - [ ] log()
