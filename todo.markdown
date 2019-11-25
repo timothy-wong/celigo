@@ -21,9 +21,9 @@
 - [ ] sort_precluster() in read() is SLOW (currently pulling out alll the hashes in master_precluster for comparison)
     - [ ] Make hash an index into master_precluster
     - [ ] async.map query master_precluster for every new error to find if exists
-- [] get_training() should ignore null and 'none' valued errors in master
-    - [ ] combine null + 'none' valued errors in master by not updating none values in label()
-    - [ ] get_training() doesn't select null values
+- [x] get_training() should ignore null and 'none' valued errors in master
+    - [x] combine null + 'none' valued errors in master by not updating none values in label()
+    - [x] get_training() doesn't select null values
 - [ ] write helptext lmao
 
 
