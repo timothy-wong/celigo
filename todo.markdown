@@ -6,7 +6,6 @@
 ### MEDIUM FIXES
 - [ ] add clean up to get_training() if errors out
     - [ ] remove td_temp in /var/lib/docker/volumes/CABINET/_data/DataPipeline
-- [ ] add clean up to, everything else?
 
 ### BIG FIXES
 - [ ] T2 Clustering
@@ -24,6 +23,7 @@
 - [x] get_training() should ignore null and 'none' valued errors in master
     - [x] combine null + 'none' valued errors in master by not updating none values in label()
     - [x] get_training() doesn't select null values
+- [ ] implement mysql pool for parallel querying
 - [ ] write helptext lmao
 
 
@@ -38,6 +38,8 @@
     - [ ] get_training() accepts a --batch flag to output specific batches
     - [ ] read() logs errors, files, per batch
     - [ ] new log() function that will print batch information
+- [ ] add clean up to every function
+    - [ ] for every main function the error passes along which stage the function was at when it errored so the function can clean up properly
 - [ ] A,,,node container,,,,perhaps,,,,
 
 ---------------------------------------------------------------------------------------------
