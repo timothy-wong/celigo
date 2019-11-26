@@ -53,7 +53,7 @@
     - [ ] module 3
     - [ ] module 4
     - [ ] atomicity
-- [ ] label()
+- [x] label()
 - [x] get_training()
 - [x] get_table()
 - [ ] dump()
