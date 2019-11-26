@@ -27,8 +27,9 @@ const io_table = 'errors_io'
 
 const io_example = {'application': '.', 'agentId' : '', '_ID': '.'}
 const error_example = {'type': '.', 'time': 0, 'timeTaken': 0, '_userId': '.', '_connectorId': '.', '_integrationId': '.', '_flowId': '.', '_flowJobId': '.', '_exportId': '.', '_importId': '', 'oIndex': 0, '_connectionId': '.', 'isDataLoader': '.', 'traceKey': '.', 'retryDataKey': '.', 'exportDataURI': '.', 'importDataURI': '.', 'exportField': '.', 'importField': '.', 'source': '.', 'code': '.', 'message': '.'}
-const userid_example = {'application': '.', 'code': '.', 'message': '.', 'hash': '.', 'userid': '.', 'count': 0}
+const master_example = {'application': '.', 'code':'.', 'essence':'.', 'classification': '.'}
 const run_example = {'essence': '.', 'hash': '.'}
+const userid_example = {'application': '.', 'code': '.', 'message': '.', 'hash': '.', 'userid': '.', 'count': 0}
 
 const helptext = 
 `
@@ -1361,7 +1362,7 @@ function select_loop(listener, reply, attempts) {
       select(listener)
     } else {
       let path = ''
-      listener.question('dp: Enter the name of the classified file (do not include the .csv):\n\n', (path_1) => {
+      listener.question('dp: Enter the name of the classified file:\n\n', (path_1) => {
         path = __dirname + '/' + path_1
         select_loop_label(listener, path, 0, (path_2) => {
           path = path_2
@@ -1400,7 +1401,7 @@ function select_loop(listener, reply, attempts) {
       listener.question('dp: This file will be written into CABINET/DataPipeline. Enter the file name you would like to write to (do not include the .csv):\n\n', (fname_1) => {
         select_loop_get_tr(listener, fname_1, 0, (fname) => {
           if (fname) {
-            get_training(fname + '.csv', (err) => {
+            get_training(null, fname + '.csv', (err) => {
               if (err) {
                 console.error(err)
               } else {
@@ -2330,7 +2331,7 @@ function label(classified_filepath, get=true, callback) {
         }
       }
       for (row of file_data.slice(1)) {
-        if (row[label_index] !== 'none') {
+        if (row[label_index] !== 'none' && row[label_index] !== '') {
           data.push(row)
         }
       }
@@ -2357,7 +2358,7 @@ function label(classified_filepath, get=true, callback) {
         if (h === 'message') {
           break
         } else {
-          label_index += 1
+          message_index += 1
         }
       }
       let label_index = 0
@@ -2368,15 +2369,8 @@ function label(classified_filepath, get=true, callback) {
           label_index += 1
         }
       }
-      const not_none = []
-      for (row of data.slice(1)) {
-        if (row[label_index] !== 'none') {
-          not_none.push(row)
-        }
-      }
-
       const messages = []
-      for (row of not_none) {
+      for (row of data.slice(1)) {
         let temp = {}
         temp['message'] = row[message_index]
         messages.push(temp)
@@ -2390,7 +2384,7 @@ function label(classified_filepath, get=true, callback) {
           cb(err)
         } else {
           const endFlask = new Date()
-          const execFlask = timeString(endFlask - startFlask)
+          const execFlask = time_string(endFlask - startFlask)
           console.log('Flask execution time: ' + execFlask)
           console.log('Received ' + body.length + ' essences.')
 
@@ -2428,192 +2422,35 @@ function label(classified_filepath, get=true, callback) {
           cb(err)
         } else {
           console.log('Finish updating labels.')
-          cb(null, to_update, connection, cb)
+          cb(null, to_update, connection)
         }
       })
     },
-    // Create training data from new labels if get_training = true
-    function get_training(to_update, connection, cb) {
-      if (get == true) {
-        const temp_table = 'relevant_master'
-        async.waterfall([
-          // Select master table
-          function select_master(wcb) {
-            const select_query = 'SELECT * FROM master'
-            connection.query(select_query, (err, result) => {
-              if (err) {
-                console.log('Error selecting from: ' + master_table)
-                wcb(err)
-              } else {
-                console.log('Finished selecting from: ' + master_table)
-                wcb(null, result)
-              }
-            })
-          },
-          // Sort master table
-          function sort_master(master_data, wcb) {
-            const essences = Object.keys(to_update)
-            let to_get = []
-            for (data_obj of master_data) {
-              if (essences.includes(data_obj['essence'])) {
-                to_get.push(data_obj)
-              }
-            }
-            wcb(null, to_get)
-          },
-          // Create temp table
-          function create_temp(to_get, wcb) {
-            create_table(temp_table, to_get[0], connection, (err) => {
-              if (err) {
-                wcb(err)
-              } else {
-                wcb(null, to_get)
-              }
-            })
-          },
-          // Insert data into temp
-          function insert_temp(to_get, wcb) {
-            insert_table(to_get, temp_table, connection, null, (err) => {
-              if (err) {
-                wcb(err)
-              } else {
-                wcb(null)
-              }
-            })
-          },
-          // Make directory for training data batches
-          function mkdir(wcb) {
-            const folder = '/var/lib/docker/volumes/CABINET/_data/DataPipeline/td_temp'
-            fs.mkdir(folder, (err) => {
-              if (err) {
-                wcb(err)
-              } else {
-                wcb(null, folder)
-              }
-            })
-          },
-          // Join temp with cluster_map, master_precluster, then write to a file, in chunks
-          function join_and_write_training(folder, wcb) {
-            const select_query = 'SELECT COUNT(*) as count FROM ' + temp_table
-            connection.query(select_query, (err, result) => {
-              if (err) {
-                wcb(err)
-              } else {
-                const count = result[0]['count']
-                const num_chunks = Math.ceil(count / join_size)
-                const chunk_list = []
-                for (let i = 0; i < num_chunks; i ++) {
-                  chunk_list.push(i)
-                }
-                async.map(chunk_list, 
-                (i, map_callback) => {
-                  select_and_write_training(master_table, i, folder, connection, (err) => {
-                    if (err) {
-                      map_callback(err)
-                    } else {
-                      map_callback(null)
-                    }
-                  })
-                },
-                (err, result) => {
-                  if (err) {
-                    cb(err)
-                  } else {
-                    cb(null)
-                  }
-                })
-              }
-            })
-          },
-          // Aggregate training data
-          function aggregate(folder, wcb) {
-            async.waterfall([
-              function read_files(w1cb) {
-                const filepaths = fs.readdirSync(folder)
-                read_csvfiles(filepaths, (err, output) => {
-                  if (err) {
-                    w1cb(err)
-                  } else {
-                    if (output && output.length > 1) {
-                      w1cb(null, output.slice(1))
-                    } else {
-                      w1cb(null, null)
-                    }
-                  }
-                })
-              },
-              function write_file(output, w1cb) {
-                if (output && output.length) {
-                  const csvWriter = csv_writer_arr({
-                    path: '/var/lib/docker/volumes/CABINET/_data/DataPipeline/' + filename,
-                    header: ['APPLICATION', 'CODE', 'ESSENCE', 'MESSAGE', 'CLASSIFICATION']
-                    })
-            
-                  csvWriter.writeRecords(output)
-                  .then(() => {
-                    console.log('Finished writing csv file ' + filename)
-                    w1cb(null)
-                  })
-                  .catch((err) => {
-                    w1cb(err)
-                  })
-                } else {
-                  w1cb(null)
-                }
-              }
-            ], 
-            function (err) {
-              if (err) {
-                wcb (err)
-              } else {
-                wcb(null, folder, connection)
-              }
-            })
-          },
-          // Delete folder
-          function rmdir(folder, wcb) {
-            fs.rmdir(folder, { recursive: true }, (err) => {
-              if (err) {
-                wcb(err)
-              } else {
-                wcb(null)
-              }
-            })
-          },
-          // Delete temp table
-          function delete_temp(wcb) {
-            drop_table(temp_table, connection, (err) => {
-              if (err) {
-                wcb(err)
-              } else {
-                wcb(null)
-              }
-            })
-          }
-        ], 
-        function (err) {
-          if (err) {
-            cb(err)
-          } else {
-            cb(null, connection)
-          }
-        })
-      } else {
-        cb(null, connection)
-      }
-    },
     // Close connection 
-    function close(connection, cb) {
+    function close(to_update, connection, cb) {
       connection.end(function(err) {
         if (err) {
           console.log('Error closing connection to databse.')
           cb(err)
         } else {
           console.log('Closed connection to database.')
-          cb(null)
+          cb(null, to_update)
         }
       })
-    }
+    },
+    // Create training data from new labels if get_training = true
+    function _get(to_update, cb) {
+      if (get == true) {
+        const essences  = Object.keys(to_update)
+        get_training(essences, 'label_training.csv', (err) => {
+          if (err) {
+            cb(err)
+          } else {
+            cb(null)
+          }
+        })
+      }
+    },
   ], 
   function (err) {
     if (err) {
@@ -2626,7 +2463,7 @@ function label(classified_filepath, get=true, callback) {
 Gets all of the training data and writes it to FILENAME inside CABINET/DataPipeline.
 Accepts a CALLBACK to pass on errors, otherwise returns nothing. 
 */
-function get_training(filename, callback) {
+function get_training(essences, filename, callback) {
   console.log('GETTING TRAINING DATA.')
   async.waterfall([
     // Connect to database
@@ -2655,9 +2492,106 @@ function get_training(filename, callback) {
         }
       })
     },
+    // Choose table
+    function switch_table(folderpath, connection, cb) {
+      if (essences && essences.length) {
+        async.waterfall([
+          // Create temp master and essences
+          function create_tables(wcb) {
+            async.parallel([
+              function create_temp(pcb) {
+                create_table('temp_master', master_example, connection, (err) => {
+                  if (err) {
+                    pcb(err)
+                  } else {
+                    pcb(null)
+                  }
+                })
+              },
+              function create_ess(pcb) {
+                create_table('essences', master_example, connection, (err) => {
+                  if (err) {
+                    pcb(err)
+                  } else {
+                    pcb(null)
+                  }
+                })
+              }
+            ], 
+            function (err, result) {
+              if (err) {
+                wcb(err)
+              } else {
+                wcb(null)
+              }
+            })
+          },
+          // Insert into essences
+          function insert_ess(wcb) {
+            const to_insert = []
+            for (e of essences) {
+              let obj = {}
+              obj['essence'] = e
+              to_insert.push(obj)
+            }
+            insert_table(to_insert, 'essences', connection, null, (err) => {
+              if (err) {
+                wcb(err)
+              } else {
+                wcb(null)
+              }
+            })
+          },
+          // Join tables
+          function join_ess(wcb) {
+            const join_query = 'SELECT * FROM ' + master_table + ' JOIN essences ON ' + master_table + '.essence = essences.essence' 
+            connection.query(join_query, (err, result, fields) => {
+              if (err) {
+                wcb(err)
+              } else {
+                wcb(null, result)
+              }
+            })
+          },
+          // Insert into temp_master
+          function insert_temp(result, wcb) {
+            if (result && result.length) {
+              insert_table(result, 'temp_master', connection, null, (err) => {
+                if (err) {
+                  wcb(err)
+                } else {
+                  wcb(null)
+                }
+              })
+            } else {
+              wcb(null)
+            }
+          },
+          // Drop essences
+          function drop_ess(wcb) {
+            drop_table('essences', connection, (err) => {
+              if (err) {
+                wcb(err)
+              } else {
+                wcb(null)
+              }
+            })
+          } 
+        ], 
+        function (err) {
+          if (err) {
+            cb(err)
+          } else {
+            cb(null, 'temp_master', true, folderpath, connection)
+          }
+        })
+      } else {
+        cb(null, master_table, false, folderpath, connection)
+      }
+    },
     // Select and write training
-    function select_and_write(folderpath, connection, cb) {
-      const select_query = 'SELECT COUNT(*) as count FROM ' + master_table
+    function select_and_write(table, rm, folderpath, connection, cb) {
+      const select_query = 'SELECT COUNT(*) as count FROM ' + table + ' WHERE classification IS NOT NULL'
       connection.query(select_query, (err, result) => {
         if (err) {
           cb(err)
@@ -2671,7 +2605,7 @@ function get_training(filename, callback) {
           console.log('Separated training into: ' + chunk_list.length + ' chunks.')
           async.map(chunk_list, 
           (i, map_callback) => {
-            select_and_write_training(master_table, i, folderpath, connection, (err) => {
+            select_and_write_training(table, i, folderpath, connection, (err) => {
               if (err) {
                 map_callback(err)
               } else {
@@ -2685,14 +2619,40 @@ function get_training(filename, callback) {
               cb(err)
             } else {
               console.log('Finished select and write')
-              cb(null, folderpath, connection)
+              cb(null, rm, folderpath, connection)
             }
           })
         }
       })
     },
+    // Drop temp master if needed
+    function drop_temp(rm, folderpath, connection, cb) {
+      if (rm) {
+        drop_table('temp_master', connection, (err) => {
+          if (err) {
+            cb(err)
+          } else {
+            cb(null, folderpath, connection)
+          }
+        })
+      } else {
+        cb(null, folderpath, connection)
+      }
+    },
+    // Close connection
+    function close(folderpath, connection, cb) {
+      connection.end(function(err) {
+        if (err) {
+          console.log('Error closing connection to databse.')
+          cb(err)
+        } else {
+          console.log('Closed connection to database.')
+          cb(null, folderpath)
+        }
+      })
+    },
     // Aggregate files
-    function aggregate(folderpath, connection, cb) {
+    function aggregate(folderpath, cb) {
       async.waterfall([
         function read_files(wcb) {
           const files = fs.readdirSync(folderpath)
@@ -2713,56 +2673,48 @@ function get_training(filename, callback) {
           })
         },
         function write_file(output, wcb) {
-          const to_write = []
-          for (row of output) {
-            if (!(row.length == 1 && row[0] === '')) {
-              to_write.push(row)
+          if (output && output.length) {
+            const to_write = []
+            for (row of output) {
+              if (!(row.length == 1 && row[0] === '')) {
+                to_write.push(row)
+              }
             }
-          }
-          const csvWriter = csv_writer({
-            path: '/var/lib/docker/volumes/CABINET/_data/DataPipeline/' + filename,
-            header: ['APPLICATION', 'CODE', 'ESSENCE', 'MESSAGE', 'CLASSIFICATION']
+            console.log(to_write)
+            const csvWriter = csv_writer_arr({
+              path: '/var/lib/docker/volumes/CABINET/_data/DataPipeline/' + filename,
+              header: ['application', 'code', 'essence', 'message', 'classification']
             })
-    
-          csvWriter.writeRecords(to_write)
-          .catch((err) => {
-            wcb(err)
-          })
-          .then(() => {
-            console.log('Finished writing csv file: ' + filename)
+      
+            csvWriter.writeRecords(to_write)
+            .catch((err) => {
+              wcb(err)
+            })
+            .then(() => {
+              console.log('Finished writing csv file: ' + filename)
+              wcb(null)
+            })
+          } else {
             wcb(null)
-          })
-          
+          }
         }
       ], 
       function (err) {
         if (err) {
           cb (err)
         } else {
-          cb(null, folderpath, connection)
+          cb(null, folderpath)
         }
       })
     },
     // Delete folder
-    function rmdir(folderpath, connection, cb) {
+    function rmdir(folderpath, cb) {
       fs.rmdir(folderpath, { recursive: true }, (err) => {
         if (err) {
           console.log('Error at rmdir.')
           cb(err)
         } else {
           console.log('Finished removing: ' + folderpath)
-          cb(null, connection)
-        }
-      })
-    },
-    // Close connection
-    function close(connection, cb) {
-      connection.end(function(err) {
-        if (err) {
-          console.log('Error closing connection to databse.')
-          cb(err)
-        } else {
-          console.log('Closed connection to database.')
           cb(null)
         }
       })
