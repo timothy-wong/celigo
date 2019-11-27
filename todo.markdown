@@ -17,9 +17,9 @@
         - [ ] App/Code
     - [ ] t2_clusters.json should be written into CABINET/DataPipeline/DataProcesserBackups
     - [ ] t2_clusters.json used in label()
-- [ ] sort_precluster() in read() is SLOW (currently pulling out alll the hashes in master_precluster for comparison)
-    - [ ] Make hash an index into master_precluster
-    - [ ] async.map query master_precluster for every new error to find if exists
+- [x] sort_precluster() in read() is SLOW (currently pulling out alll the hashes in master_precluster for comparison)
+    - [x] Make hash an index into master_precluster // (already a primary key which is the same as a unique index)
+    - [x] async.map query master_precluster for every new error to find if exists
 - [x] get_training() should ignore null and 'none' valued errors in master
     - [x] combine null + 'none' valued errors in master by not updating none values in label()
     - [x] get_training() doesn't select null values

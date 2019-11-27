@@ -1688,27 +1688,34 @@ function module2(userid_data, connection, callback) {
     // Sort into seen and new using preclusters rows (returns _new)
     function sort_precluster(precluster_data, wcb) {
       const hash_select = 'SELECT hash FROM ' + master_precluster_table
-      
-      connection.query(hash_select, (err, result, fields) => {
-        if (err) {
-          console.log('Error at sort_precluster().')
-          wcb(err)
-        } else {
-          const hashes = []
-          for (hash_obj of result) {
-            hashes.push(hash_obj['hash'])
-          }
-          const _new = []
-          for (error of precluster_data) {
-            if (!hashes.includes(error['hash'])) {
-              _new.push(error)
+
+      async.map(precluster_data, 
+        (datum, map_callback) => {
+          let hash_query = hash_select + ' WHERE hash=\'' + datum['hash'] + '\''
+          connection.query(hash_query, (err, result) => {
+            if (err) {
+              map_callback(err)
+            } else {
+              if (Array.isArray(result) && result.length)             
+                map_callback(null)
+              else
+                map_callback(null, datum)
             }
+          })
+        },
+        (err, result) => {
+          if (err) {
+            console.log('Error at sort_precluster().')
+            wcb(err)
+          } else {
+            const _new = result.filter((value, index, arr) => {
+              return value !== undefined
+            })
+            console.log('Finished sorting precluster errors: found ' + _new.length + ' new errors.')
+            wcb(null, _new)
           }
-          console.log('Finished sorting precluster errors: found ' + _new.length + ' new errors.')
-          wcb(null, _new)
-        }
-      })
-    },
+        })
+      },
     // Submodule 2: insert precluster, flask convert, write flask (result = [null, flasked], returns flasked)
     function submodule2(_new, wcb) {
       async.parallel([
