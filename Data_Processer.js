@@ -39,6 +39,49 @@ const alphanumeric_regex = new RegExp('\\w+')
 
 // HELPER FUNCTIONS -------------------------------------------------------------------------------------------------------------------------
 
+function cleanupTables(connection, cb) {
+  const showTables = 'SHOW TABLES;'
+
+  connection.query(showTables, (err, result, fields) => {
+    if (err) {
+      console.log('Error showing tables.')
+      cb(err)
+    } else {
+      let key = 'Tables_in_LBLR_data'
+      console.log('key:', key)
+      let i
+      for (i = 0; i < result.length; i++) {
+        let tbl_name = result[i][key]
+        console.log(tbl_name)
+        if (tbl_name === 'errors_io' || tbl_name === 'userid_table' || tbl_name.slice(0, 12) === 'errors_json_') {
+          console.log('\tdropping', tbl_name)
+          drop_table(tbl_name, connection, (err) => {
+            if (err) {
+              console.log('Failed to drop', tbl_name)
+              cb(err)
+            }
+          })
+        }
+      }
+      cb(null, connection)
+    }
+  })
+}
+
+/*
+Closes the connection specified
+*/
+function close_connection(connection, cb) {
+  connection.end(function (err) {
+    if (err) {
+      console.log('Error closing connection to databse.')
+      cb(err)
+    } else {
+      console.log('Closed connection to database.')
+      cb(null)
+    }
+  })
+}
 
 /* 
 Takes in milliseconds MS and returns it as a string formatted into minutes, seconds and milliseconds.
@@ -1649,7 +1692,22 @@ function module1(folderpath, io_path, connection, callback) {
   ], 
   function (err, output) {
     if (err) {
-      callback(err)
+      console.log('\n\t Trying to cleanup module 1\n')
+        cleanupTables(connection, (cleanErr) => {
+          if (cleanErr) {
+            console.log('Cleanup Error', cleanErr)
+          }
+          else {
+            close_connection(connection, (conErr) => {
+              if (conErr) {
+                console.log('Close Connection Error', conErr)
+              }
+              else {
+                callback(err)
+              }
+            })
+          }
+        })
     } else {
       module2(output, connection, callback)
     }
