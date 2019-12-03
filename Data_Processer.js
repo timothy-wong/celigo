@@ -13,7 +13,7 @@ const readline = require('readline')
 const batch_size = 50
 const chunk_size = 10000
 const count_chunk_size = 250
-const join_size  = 100
+const join_size = 100
 const relevant_fields = ['application', 'code', 'message']
 const master_cols = ['application', 'code', 'essence']
 
@@ -25,11 +25,15 @@ const master_precluster_table = 'master_precluster'
 const userid_table = 'userid_table'
 const io_table = 'errors_io'
 
-const io_example = {'application': '.', 'agentId' : '', '_ID': '.'}
+const io_example = {'application': '.', 'agentId': '', '_ID': '.'}
 const error_example = {'type': '.', 'time': 0, 'timeTaken': 0, '_userId': '.', '_connectorId': '.', '_integrationId': '.', '_flowId': '.', '_flowJobId': '.', '_exportId': '.', '_importId': '', 'oIndex': 0, '_connectionId': '.', 'isDataLoader': '.', 'traceKey': '.', 'retryDataKey': '.', 'exportDataURI': '.', 'importDataURI': '.', 'exportField': '.', 'importField': '.', 'source': '.', 'code': '.', 'message': '.'}
 const master_example = {'application': '.', 'code':'.', 'essence':'.', 'classification': '.'}
 const run_example = {'essence': '.', 'hash': '.'}
-const userid_example = {'application': '.', 'code': '.', 'message': '.', 'hash': '.', 'userid': '.', 'count': 0}
+const userid_example = {'application': '.', 'code': '.', 'message': '.', 'hash': 64, 'userid': 64, 'num_messages': 0}
+
+
+const userid_unique_keys = ['hash', 'userid']
+
 
 const helptext = 
 `
@@ -39,6 +43,9 @@ const alphanumeric_regex = new RegExp('\\w+')
 
 // HELPER FUNCTIONS -------------------------------------------------------------------------------------------------------------------------
 
+/* 
+Looks at all tables and drops all temporary tables 
+*/
 function cleanupTables(connection, cb) {
   const showTables = 'SHOW TABLES;'
 
@@ -87,7 +94,7 @@ function close_connection(connection, cb) {
 Takes in milliseconds MS and returns it as a string formatted into minutes, seconds and milliseconds.
 */
 function time_string(ms) {
-  let secs = Math.floor(ms/ 1000)
+  let secs = Math.floor(ms / 1000)
   ms = ms - (secs * 1000)
   let mins = Math.floor(secs / 60)
   secs = secs - (mins * 60)
@@ -161,7 +168,7 @@ function connect_db(callback) {
 Creates a table with NAME and columns given by EXAMPLE_DATA using CONNECTION. 
 Accepts a CALLBACK to pass on errors, otherwise returns nothing. 
 */
-function create_table(name, example_data, connection, callback) {
+function create_table(name, example_data, unique_keys = [], connection, callback) {
   let create_query = 'CREATE TABLE ' + name + ' '
   const keys = Object.keys(example_data)
   let cols = []
@@ -169,13 +176,25 @@ function create_table(name, example_data, connection, callback) {
   for (k of keys) {
     let col_string = k
     if (typeof example_data[k] === 'number') {
-      col_string = col_string.concat(' BIGINT ')
+      if (example_data[k] > 0) { 
+        col_string = col_string.concat(' VARCHAR(' + example_data[k] + ') ')
+      }
+      else {
+        col_string = col_string.concat(' BIGINT ')
+      }
     } else {
       col_string = col_string.concat(' VARCHAR(500) ')
     }
     cols.push(col_string)
   }
+
+  if (unique_keys.length > 0) {
+    cols.push('UNIQUE ' + bracket(unique_keys))
+  }
+
   create_query = create_query.concat(bracket(cols))
+
+
 
   connection.query(create_query, callback)
 }
@@ -274,7 +293,7 @@ function read_jsonfile(filepath, callback) {
 Insert an array of OBJECTS into TABLE using CONNECTION. Assumes objects are correctly formatted for insert.
 Accepts a CALLBACK to pass on errors, otherwise returns nothing.
 */
-function insert_table(objects, table, connection, ignore=false, callback) {
+function insert_table(objects, table, connection, ignore = false, duplicate = '', callback) {
   if (objects && objects.length) {
 
     const keys = Object.keys(objects[0])
@@ -284,6 +303,10 @@ function insert_table(objects, table, connection, ignore=false, callback) {
       insert_query = 'INSERT IGNORE INTO ' + table + ' ' + cols + ' VALUES ?'
     } else {
       insert_query = 'INSERT INTO ' + table + ' ' + cols + ' VALUES ?'
+    }
+
+    if (duplicate.length > 0) {
+      insert_query = insert_query + ' ON DUPLICATE KEY UPDATE ' + duplicate
     }
 
     if (objects.length > chunk_size) {
@@ -300,7 +323,7 @@ function insert_table(objects, table, connection, ignore=false, callback) {
         if (err) { 
           callback(err)
         } else {
-          insert_table(objects.slice(10000), table, connection, ignore, callback)
+          insert_table(objects.slice(10000), table, connection, ignore, duplicate, callback)
         }
       })
     } else {
@@ -379,7 +402,7 @@ function insert_errorfiles(filepaths, table, connection, callback) {
             }
           }
         }
-        insert_table(well_formed, table, connection, null, (err) => {
+        insert_table(well_formed, table, connection, undefined, undefined, (err) => {
           if (err) {
             wcb(err)
           } else {
@@ -526,14 +549,14 @@ Inserts the errors into UUID TABLE with processing ID using CONNECTION.
 Hardcoded examples of error and io data.
 Accepts a CALLBACK to pass on errors, otherwise returns nothing.
 */ 
-function batch(filepaths, userid_table, id, connection, callback) {d
+function batch(filepaths, userid_table, id, connection, callback) {
   const json_table = 'errors_json' + '_' + id.toString()
   console.log('PROCESSING BATCH ' + id)
     
   async.waterfall([
     // Create tables
     function create_json(cb) {
-      create_table(json_table, error_example, connection, (err, result) => {
+      create_table(json_table, error_example, undefined, connection, (err, result) => {
         if (err) {
           console.log('BATCH ' + id + ': Failed to create table: ' + json_table)
           cb(err) 
@@ -571,7 +594,7 @@ function batch(filepaths, userid_table, id, connection, callback) {d
       const cols_string = comma(cols)
       const groupby_string = comma(groupby_cols)
 
-      join_query = join_query.concat(cols_string + ', COUNT(*) AS count FROM ' + json_table + ' JOIN ' + io_table + ' ON ' + json_table + '._connectionId = ' + io_table + '._ID GROUP BY ' + groupby_string)
+      join_query = join_query.concat(cols_string + ', COUNT(*) AS num_messages FROM ' + json_table + ' JOIN ' + io_table + ' ON ' + json_table + '._connectionId = ' + io_table + '._ID GROUP BY ' + groupby_string)
 
       connection.query(join_query, function(err, result) {
         if (err) {
@@ -602,7 +625,8 @@ function batch(filepaths, userid_table, id, connection, callback) {d
     function insert_uuid(userid_data, cb) {
       console.log('BATCH ' + id + ': Started insert into: ' + userid_table)
       if (userid_data && userid_data.length) {
-        insert_table(userid_data, userid_table, connection, null, (err) => {
+        const dup_update = 'num_messages = num_messages + VALUES(num_messages)'
+        insert_table(userid_data, userid_table, connection, undefined, dup_update, (err) => {
           if (err) {
             console.log('BATCH ' + id + ': Error inserting new errors into ' + userid_table + '.')
             cb(err)
@@ -725,8 +749,6 @@ function batch_sync(batches, userid_table, connection, callback) {
     if (err) {
       callback(err)
     } else {
-      console.log(2)
-      console.log(result.length)
       callback(null, result)
     }
   })
@@ -830,7 +852,7 @@ function get_prototypes(t2_clusters, connection, callback) {
               let r_cluster = hash_dict[r_hash]
               let curr_data = cluster_data[r_cluster]
               curr_data[0].add(r['userid'])
-              curr_data[1] += r['count']
+              curr_data[1] += r['num_messages']
               cluster_data[r_cluster] = curr_data
             }
           }
@@ -841,7 +863,7 @@ function get_prototypes(t2_clusters, connection, callback) {
             delete prototype['hash']
             let data = cluster_data[i]
             prototype['userids'] = data[0].size
-            prototype['count'] = data[1]
+            prototype['num_messages'] = data[1]
             prototypes.push(prototype)
           }
           callback(null, prototypes)
@@ -973,7 +995,7 @@ function write_create_table(filename, connection, table_name, field_names, callb
       let to_write = ret['statement']
       field_names = ret['field_names']
 
-      append_file(filename, to_write, (err)  => {
+      append_file(filename, to_write, (err) => {
         if (err) {
           callback(err)
         }
@@ -1076,7 +1098,7 @@ function write_insert_into(filename, connection, table_name, field_names, callba
     } else {
       let statement = insert_into_statement(table_name, result, field_names)
 
-      append_file(filename, statement, (err)  => {
+      append_file(filename, statement, (err) => {
         if (err) {
           callback(err)
         }
@@ -1594,7 +1616,7 @@ function module1(folderpath, io_path, connection, callback) {
         },
         // Create userid_table (returns null)
         function create_uuid(pcb) {
-          create_table(userid_table, userid_example, connection, (err, result) => {
+          create_table(userid_table, userid_example, userid_unique_keys, connection, (err, result) => {
             if (err) {
               console.log('Failed to create table: ' + userid_table)
               pcb(err)
@@ -1609,7 +1631,7 @@ function module1(folderpath, io_path, connection, callback) {
           async.waterfall([
             // Create io table.
             function create_io(sm_wcb) {
-              create_table(io_table, io_example, connection, (err, result) => {
+              create_table(io_table, io_example, undefined, connection, (err, result) => {
                 if (err) {
                   console.log('Failed to create table: ' + io_table)
                   sm_wcb(err)
@@ -1639,7 +1661,7 @@ function module1(folderpath, io_path, connection, callback) {
                     new_data.push(nd)
                   }
                   const io_write = make_obj(headers, new_data)
-                  insert_table(io_write, io_table, connection, null, (err) => {
+                  insert_table(io_write, io_table, connection, undefined, undefined, (err) => {
                     if (err) {
                       sm_wcb(err)
                     } else {
@@ -1669,14 +1691,45 @@ function module1(folderpath, io_path, connection, callback) {
     },
     // Process batches (returns null)
     function process(batches, cb) {
-      batch_sync(batches, userid_table, connection, (err, output) => {
-        if (err) {
-          cb(err)
-        } else {
-          cb(null, output)
-        }
+      const pool = mysql.createPool({
+        conncetionLimit: batches.length,
+        host: 'localhost',
+        port: '3306',
+        database: 'LBLR_data',
+        user: 'root',
+        password: 'raceboorishabackignitedrum',
       })
+      
+      async.map(batches, 
+        (datum, map_callback) => {
+          console.log(datum)
+          batch(datum, userid_table, 0, connection, (err) => {
+            if (err) {
+              map_callback(err)
+            }
+            else {
+              map_callback(null)
+            }
+          })
+        },
+        (err, result) => {
+          if (err) {
+            cb(err)
+          }
+          else {
+            const select_query = "SELECT * FROM " + userid_table
+            connection.query(select_query, (err, result, fields) => {
+              if (err) {
+                cb(err)
+              } else {
+                cb(null, result)
+              }
+            })
+          }
+        }
+      )
     },
+
     // Drop io_table (returns null)
     function drop_io(output, cb) {
       drop_table(io_table, connection, (err, result) => {
@@ -1730,7 +1783,7 @@ function module2(userid_data, connection, callback) {
         wcb(null, userid_data)
       } else {
         const cols = comma(relevant_fields)
-        const select_query = 'SELECT ' + cols + ', hash FROM ' + userid_table + ' GROUP BY '+ cols + ', hash'
+        const select_query = 'SELECT ' + cols + ', hash FROM ' + userid_table + ' GROUP BY ' + cols + ', hash'
     
         connection.query(select_query, (err, result, fields) => {
           if (err) {
@@ -1790,7 +1843,7 @@ function module2(userid_data, connection, callback) {
               to_insert.push(error_values)
             }
 
-            insert_table(to_insert, master_precluster_table, connection, null, (err) => {
+            insert_table(to_insert, master_precluster_table, connection, undefined, undefined, (err) => {
               if (err) {
                 console.log('Error at insert precluster.')
                 sm2_pcb(err)
@@ -1986,7 +2039,7 @@ function module3(flasked, connection, callback) {
                       to_insert.push(error_values)
                     }
 
-                    insert_table(to_insert, master_table, connection, null, (err) => {
+                    insert_table(to_insert, master_table, connection, undefined, undefined, (err) => {
                       if (err) {
                         console.log('Error at insert master.')
                         sm3b_pcb(err)
@@ -1996,7 +2049,7 @@ function module3(flasked, connection, callback) {
                       }
                     })
                   } else {
-                    console.log('Finished inserting new errors into: ' + master_table  + ' (none found)')
+                    console.log('Finished inserting new errors into: ' + master_table + ' (none found)')
                     sm3b_pcb(null)
                   }
                 },
@@ -2039,7 +2092,7 @@ function module3(flasked, connection, callback) {
                   async.waterfall([
                     // Create run map
                     function create_run(sm3d_wcb) {
-                      create_table(run_map, run_example, connection, (err) => {
+                      create_table(run_map, run_example, undefined, connection, (err) => {
                         if (err) {
                           console.log('Error creating: ' + run_map)
                           sm3d_wcb(err)
@@ -2058,7 +2111,7 @@ function module3(flasked, connection, callback) {
                         error_to_insert['hash'] = error['hash']
                         to_insert.push(error_to_insert)
                       }
-                      insert_table(to_insert, run_map, connection, null, (err) => {
+                      insert_table(to_insert, run_map, connection, undefined, undefined, (err) => {
                         if (err) {
                           console.log('Error inserting into: ' + run_map)
                           sm3d_wcb(err)
@@ -2098,7 +2151,7 @@ function module3(flasked, connection, callback) {
         // Insert values into cluster_map (returns null)
         function insert_cluster(sm3_pcb) {
           if (cluster_mappings && (cluster_mappings.length)) {
-            insert_table(cluster_mappings, cluster_map, connection, true, (err) => {
+            insert_table(cluster_mappings, cluster_map, connection, true, undefined, (err) => {
               if (err) {
                 console.log('Error inserting into: ' + cluster_map)
                 sm3_pcb(err)
@@ -2173,7 +2226,7 @@ function module4(t2_clusters, connection, callback) {
             {id: 'application', title: 'application'},
             {id: 'code', title: 'code'},
             {id: 'message', title: 'message'},
-            {id: 'count', title: 'count'},
+            {id: 'num_messages', title: 'num_messages'},
             {id: 'userids', title: 'userids'}
         ]
       })
@@ -2565,7 +2618,7 @@ function get_training(essences, filename, callback) {
           function create_tables(wcb) {
             async.parallel([
               function create_temp(pcb) {
-                create_table('temp_master', master_example, connection, (err) => {
+                create_table('temp_master', master_example, undefined, connection, (err) => {
                   if (err) {
                     pcb(err)
                   } else {
@@ -2574,7 +2627,7 @@ function get_training(essences, filename, callback) {
                 })
               },
               function create_ess(pcb) {
-                create_table('essences', master_example, connection, (err) => {
+                create_table('essences', master_example, undefined, connection, (err) => {
                   if (err) {
                     pcb(err)
                   } else {
@@ -2599,7 +2652,7 @@ function get_training(essences, filename, callback) {
               obj['essence'] = e
               to_insert.push(obj)
             }
-            insert_table(to_insert, 'essences', connection, null, (err) => {
+            insert_table(to_insert, 'essences', connection, undefined, undefined, (err) => {
               if (err) {
                 wcb(err)
               } else {
@@ -2621,7 +2674,7 @@ function get_training(essences, filename, callback) {
           // Insert into temp_master
           function insert_temp(result, wcb) {
             if (result && result.length) {
-              insert_table(result, 'temp_master', connection, null, (err) => {
+              insert_table(result, 'temp_master', connection, undefined, undefined, (err) => {
                 if (err) {
                   wcb(err)
                 } else {
@@ -2656,12 +2709,12 @@ function get_training(essences, filename, callback) {
     },
     // Select and write training
     function select_and_write(table, rm, folderpath, connection, cb) {
-      const select_query = 'SELECT COUNT(*) as count FROM ' + table + ' WHERE classification IS NOT NULL'
+      const select_query = 'SELECT COUNT(*) as num_count FROM ' + table + ' WHERE classification IS NOT NULL'
       connection.query(select_query, (err, result) => {
         if (err) {
           cb(err)
         } else {
-          const count = result[0]['count']
+          const count = result[0]['num_count']
           const num_chunks = Math.ceil(count / join_size)
           const chunk_list = []
           for (let i = 0; i < num_chunks; i ++) {
